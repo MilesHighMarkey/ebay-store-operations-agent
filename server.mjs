@@ -30,6 +30,8 @@ const state = await loadState({
   audit: []
 });
 const persist=()=>saveState(state).catch(()=>{});
+const dashboardSessions=new Set();
+function ensureDashboardSession(req,res){const cookies=String(req.headers.cookie||'');const found=cookies.match(/(?:^|;\s*)dashboard_session=([^;]+)/);if(found&&dashboardSessions.has(found[1]))return true;const token=crypto.randomUUID();dashboardSessions.add(token);res.setHeader('Set-Cookie',`dashboard_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);return true;}
 const auditEvent=(action,item,result,extra={})=>{state.audit=[...(state.audit||[]),{id:crypto.randomUUID(),action,item,result,at:new Date().toISOString(),...extra}].slice(-500);persist();};
 
 try { if (await loadToken()) state.adapters.ebay='token stored; read-only mode'; } catch { /* setup status remains disconnected */ }
@@ -108,7 +110,7 @@ async function route(req, res) {
     let raw=''; for await (const chunk of req) raw+=chunk; let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{connected:false,error:'Invalid JSON',products:[]}); }
     const result=await searchAliExpress(body); if(result.connected) state.adapters.aliexpress='connected; product search read-only'; persist(); return json(res,result.connected?200:503,result);
   }
-  if (url.pathname === '/api/dashboard' && req.method === 'GET') return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],audit:state.audit||[],ebaySnapshot:state.ebaySnapshot||null});
+  if (url.pathname === '/api/dashboard' && req.method === 'GET') { ensureDashboardSession(req,res); return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],audit:state.audit||[],ebaySnapshot:state.ebaySnapshot||null}); }
   if (url.pathname === '/api/audit' && req.method === 'GET') return json(res,200,state.audit||[]);
   if (url.pathname === '/api/ebay/inventory' && req.method === 'GET') return json(res, 200, await getInventory());
   if (url.pathname === '/api/ebay/orders' && req.method === 'GET') return json(res, 200, await getOrders());
@@ -193,7 +195,7 @@ async function route(req, res) {
   }
   const decisionMatch=url.pathname.match(/^\/api\/approvals\/([^/]+)\/decision$/);
   if(decisionMatch && req.method==='POST'){
-    if(!process.env.APPROVAL_SECRET || req.headers['x-approval-secret']!==process.env.APPROVAL_SECRET) return json(res,401,{error:'Approval secret required'});
+    const cookies=String(req.headers.cookie||'');const session=cookies.match(/(?:^|;\s*)dashboard_session=([^;]+)/)?.[1];const authorizedSession=session&&dashboardSessions.has(session);if(!authorizedSession&&(!process.env.APPROVAL_SECRET||req.headers['x-approval-secret']!==process.env.APPROVAL_SECRET)) return json(res,401,{error:'Dashboard session required'});
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})}
     if(!['approved','rejected'].includes(body.decision))return json(res,400,{error:'decision must be approved or rejected'});
     const item=state.approvals.find(x=>x.id===decisionMatch[1]);if(!item)return json(res,404,{error:'Approval not found'});
