@@ -31,6 +31,8 @@ POST /api/approvals
 
 To connect eBay, create an eBay developer application, configure its OAuth-enabled RuName to return to `/auth/ebay/callback`, and set `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_REDIRECT_URI` (the eBay RuName), and a strong `TOKEN_ENCRYPTION_KEY` in Render or the local `.env`. Use the dashboard's **Authorize eBay read-only access** button. The callback exchanges the authorization code automatically and stores the token encrypted; live mutations remain disabled by default.
 
+For a Render persistent disk, set `TOKEN_STORE_PATH=/var/data/.ebay-token.enc` and `STATE_STORE_PATH=/var/data/.agent-state.json`; otherwise Render's default filesystem is ephemeral across redeploys.
+
 For permitted AliExpress catalog discovery, add `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_APP_SECRET`, and optionally `ALIEXPRESS_TRACKING_ID`. The dashboard's read-only search uses the official product-query endpoint, sends U.S. destination and delivery filters, and scores the returned candidates before they enter review. It does not scrape pages, place supplier orders, or publish listings.
 
 ## MVP rules
