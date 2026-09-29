@@ -43,6 +43,7 @@ export async function searchAliExpress(options={}) {
     return {connected:false,error:`AliExpress API request failed: ${error.message}`,products:[],diagnostics:{endpoint}};
   }
   if(!response.ok) return {connected:false,error:`AliExpress API request failed (${response.status})`,products:[],diagnostics:{endpoint,bodyKeys:Object.keys(body||{})}};
+  if(body?.error_response) { const apiError=body.error_response; const error=apiError.sub_code==='isv.appkey-not-exists'?'AliExpress rejected the app key. Replace ALIEXPRESS_APP_KEY with the key from the approved app console.':apiError.sub_msg||apiError.msg||'AliExpress rejected the request'; return {connected:false,error,products:[],diagnostics:{bodyKeys:Object.keys(body),errorCode:apiError.code,subCode:apiError.sub_code}}; }
   const root=body?.aliexpress_affiliate_product_query_response?.resp_result||body?.resp_result;
   if(!root) return {connected:false,error:'AliExpress returned an unrecognized response envelope',products:[],diagnostics:{endpoint,bodyKeys:Object.keys(body||{}),responsePreview:String(text||'').slice(0,160)}};
   if(root?.resp_code&&Number(root.resp_code)!==200) return {connected:false,error:root.resp_msg||`AliExpress API error ${root.resp_code}`,products:[],diagnostics:{bodyKeys:Object.keys(body||{}),rootKeys:Object.keys(root||{})}};
