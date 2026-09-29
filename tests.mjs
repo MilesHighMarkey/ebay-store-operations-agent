@@ -9,6 +9,7 @@ import { rankSuppliers } from './suppliers.mjs';
 import { recommendPrice } from './pricing.mjs';
 import { profitReport } from './profit-report.mjs';
 import { scoreDiscoveredProducts } from './product-discovery.mjs';
+import { signAliExpress } from './aliexpress-adapter.mjs';
 
 const preferred=scoreOpportunity({salePrice:50,supplierCost:20,supplierShipping:5,monthlySales:10,shipDays:5,handlingDays:2,stockConfidence:90});
 assert.equal(preferred.preferredTarget,true); assert.equal(preferred.decision,'review');
@@ -32,4 +33,5 @@ assert.equal(recommendPrice({supplierCost:10,supplierShipping:2,targetProfit:10,
 assert.equal(profitReport([{sku:'x',revenue:30}],{x:10},14).summary.profit,15.8);
 const discovered=scoreDiscoveredProducts([{name:'Fast US candidate',marketPrice:39.99,cost:18,shipping:4,monthlySales:60,rating:4.8,reviewCount:200,stockConfidence:90,shipFrom:'United States',handlingDays:2,transitDays:4}])[0];
 assert.equal(discovered.decision,'review'); assert.equal(discovered.usWarehouse,true); assert.equal(discovered.highVolumeException,true);
+assert.equal(signAliExpress({b:'2',a:'1'},'secret'),signAliExpress({a:'1',b:'2'},'secret'));
 console.log('All store-agent tests passed');

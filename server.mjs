@@ -14,6 +14,7 @@ import { recommendPrice } from './pricing.mjs';
 import { profitReport } from './profit-report.mjs';
 import { loadState, saveState } from './state-store.mjs';
 import { scoreDiscoveredProducts } from './product-discovery.mjs';
+import { searchAliExpress } from './aliexpress-adapter.mjs';
 
 const root = fileURLToPath(new URL('.', import.meta.url));
 try { const envText=await readFile(join(root,'.env'),'utf8'); for(const line of envText.split(/\r?\n/)){const m=line.match(/^\s*([A-Z][A-Z0-9_]*)\s*=\s*(.*)\s*$/);if(m&&!process.env[m[1]])process.env[m[1]]=m[2].replace(/^['"]|['"]$/g,'');} } catch { }
@@ -100,7 +101,11 @@ async function route(req, res) {
     for(const key of allowed) if(typeof body[key]==='string'&&body[key].trim()) process.env[key]=body[key].trim();
     return json(res,200,{saved:true,message:'Saved locally. The connection is ready to authorize.'});
   }
-  if (url.pathname === '/api/setup/status' && req.method === 'GET') return json(res,200,{mockMode:mock,integrations:{ebay:{ready:Boolean(process.env.EBAY_CLIENT_ID&&process.env.EBAY_CLIENT_SECRET&&process.env.EBAY_REDIRECT_URI&&process.env.TOKEN_ENCRYPTION_KEY),missing:['EBAY_CLIENT_ID','EBAY_CLIENT_SECRET','EBAY_REDIRECT_URI','TOKEN_ENCRYPTION_KEY'].filter(key=>!process.env[key])},telegram:{ready:Boolean(process.env.TELEGRAM_BOT_TOKEN&&process.env.TELEGRAM_CHAT_ID),missing:['TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID'].filter(key=>!process.env[key])},suppliers:{ready:(state.suppliers||[]).length>0,recordCount:(state.suppliers||[]).length}}});
+  if (url.pathname === '/api/setup/status' && req.method === 'GET') return json(res,200,{mockMode:mock,integrations:{ebay:{ready:Boolean(process.env.EBAY_CLIENT_ID&&process.env.EBAY_CLIENT_SECRET&&process.env.EBAY_REDIRECT_URI&&process.env.TOKEN_ENCRYPTION_KEY),missing:['EBAY_CLIENT_ID','EBAY_CLIENT_SECRET','EBAY_REDIRECT_URI','TOKEN_ENCRYPTION_KEY'].filter(key=>!process.env[key])},aliexpress:{ready:Boolean(process.env.ALIEXPRESS_APP_KEY&&process.env.ALIEXPRESS_APP_SECRET),missing:['ALIEXPRESS_APP_KEY','ALIEXPRESS_APP_SECRET'].filter(key=>!process.env[key])},telegram:{ready:Boolean(process.env.TELEGRAM_BOT_TOKEN&&process.env.TELEGRAM_CHAT_ID),missing:['TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID'].filter(key=>!process.env[key])},suppliers:{ready:(state.suppliers||[]).length>0,recordCount:(state.suppliers||[]).length}}});
+  if (url.pathname === '/api/aliexpress/search' && req.method === 'POST') {
+    let raw=''; for await (const chunk of req) raw+=chunk; let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{connected:false,error:'Invalid JSON',products:[]}); }
+    const result=await searchAliExpress(body); if(result.connected) state.adapters.aliexpress='connected; product search read-only'; persist(); return json(res,result.connected?200:503,result);
+  }
   if (url.pathname === '/api/dashboard' && req.method === 'GET') return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],ebaySnapshot:state.ebaySnapshot||null});
   if (url.pathname === '/api/ebay/inventory' && req.method === 'GET') return json(res, 200, await getInventory());
   if (url.pathname === '/api/ebay/orders' && req.method === 'GET') return json(res, 200, await getOrders());
