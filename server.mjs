@@ -26,9 +26,11 @@ const state = await loadState({
   health: { mode: mock ? 'mock' : 'live', liveActionsEnabled: false, sellerLevel: 'unknown' },
   adapters: { ebay: 'not connected', aliexpress: 'not connected', suppliers: 'mock catalog', telegram: 'not connected' },
   listingDrafts: [],
-  suppliers: []
+  suppliers: [],
+  audit: []
 });
 const persist=()=>saveState(state).catch(()=>{});
+const auditEvent=(action,item,result,extra={})=>{state.audit=[...(state.audit||[]),{id:crypto.randomUUID(),action,item,result,at:new Date().toISOString(),...extra}].slice(-500);persist();};
 
 try { if (await loadToken()) state.adapters.ebay='token stored; read-only mode'; } catch { /* setup status remains disconnected */ }
 
@@ -106,7 +108,8 @@ async function route(req, res) {
     let raw=''; for await (const chunk of req) raw+=chunk; let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{connected:false,error:'Invalid JSON',products:[]}); }
     const result=await searchAliExpress(body); if(result.connected) state.adapters.aliexpress='connected; product search read-only'; persist(); return json(res,result.connected?200:503,result);
   }
-  if (url.pathname === '/api/dashboard' && req.method === 'GET') return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],ebaySnapshot:state.ebaySnapshot||null});
+  if (url.pathname === '/api/dashboard' && req.method === 'GET') return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],audit:state.audit||[],ebaySnapshot:state.ebaySnapshot||null});
+  if (url.pathname === '/api/audit' && req.method === 'GET') return json(res,200,state.audit||[]);
   if (url.pathname === '/api/ebay/inventory' && req.method === 'GET') return json(res, 200, await getInventory());
   if (url.pathname === '/api/ebay/orders' && req.method === 'GET') return json(res, 200, await getOrders());
   if (url.pathname === '/api/ebay/inventory/normalized' && req.method === 'GET') return json(res, 200, await getNormalizedInventory());
@@ -142,7 +145,7 @@ async function route(req, res) {
   if (url.pathname === '/api/listing-drafts' && req.method === 'GET') return json(res,200,state.listingDrafts||[]);
   if (url.pathname === '/api/listing-drafts' && req.method === 'POST') {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})}
-    const draft={id:crypto.randomUUID(),...buildDraft(body),createdAt:new Date().toISOString()};state.listingDrafts=[...(state.listingDrafts||[]),draft];persist();return json(res,201,draft);
+    const draft={id:crypto.randomUUID(),...buildDraft(body),createdAt:new Date().toISOString()};state.listingDrafts=[...(state.listingDrafts||[]),draft];auditEvent('Created listing draft',draft.title,'Draft');return json(res,201,draft);
   }
   if (url.pathname === '/api/monitor/health' && req.method === 'POST') {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})};return json(res,200,buildHealthReport(body));
@@ -156,7 +159,7 @@ async function route(req, res) {
     let body={}; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{error:'Invalid JSON'}); }
     if (!body.action || !body.item) return json(res,400,{error:'action and item are required'});
     const approval={id:crypto.randomUUID(), action:body.action, item:body.item, status:'pending', createdAt:new Date().toISOString()};
-    state.approvals.push(approval); persist(); const notification=await sendApprovalCard(approval); return json(res,201,{...approval,notification});
+    state.approvals.push(approval); auditEvent('Created approval',body.item?.title||body.item?.name||body.action,'Pending',{approvalId:approval.id}); const notification=await sendApprovalCard(approval); return json(res,201,{...approval,notification});
   }
   const decisionMatch=url.pathname.match(/^\/api\/approvals\/([^/]+)\/decision$/);
   if(decisionMatch && req.method==='POST'){
@@ -164,7 +167,7 @@ async function route(req, res) {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})}
     if(!['approved','rejected'].includes(body.decision))return json(res,400,{error:'decision must be approved or rejected'});
     const item=state.approvals.find(x=>x.id===decisionMatch[1]);if(!item)return json(res,404,{error:'Approval not found'});
-    item.status=body.decision;item.decidedAt=new Date().toISOString();item.decidedBy=body.decidedBy||'approval-channel';persist();return json(res,200,item);
+    item.status=body.decision;item.decidedAt=new Date().toISOString();item.decidedBy=body.decidedBy||'approval-channel';auditEvent('Approval decision',item.item?.title||item.item?.name||item.action,body.decision,{approvalId:item.id,decidedBy:item.decidedBy});return json(res,200,item);
   }
   const requested = url.pathname === '/' ? '/index.html' : url.pathname;
   const safe = requested.replaceAll('..','');
