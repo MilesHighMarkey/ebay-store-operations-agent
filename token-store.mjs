@@ -1,5 +1,5 @@
 import { createCipheriv, createDecipheriv, createHash, randomBytes } from 'node:crypto';
-import { readFile, writeFile } from 'node:fs/promises';
+import { readFile, writeFile, rename } from 'node:fs/promises';
 
 const path = new URL('./.ebay-token.enc', import.meta.url);
 const key = () => {
@@ -10,7 +10,7 @@ const key = () => {
 export async function saveToken(token) {
   const iv=randomBytes(12), cipher=createCipheriv('aes-256-gcm',key(),iv);
   const encrypted=Buffer.concat([cipher.update(JSON.stringify(token),'utf8'),cipher.final()]);
-  await writeFile(path, JSON.stringify({iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:encrypted.toString('base64')}), {mode:0o600});
+  const temp=new URL('./.ebay-token.enc.tmp',import.meta.url); await writeFile(temp, JSON.stringify({iv:iv.toString('base64'),tag:cipher.getAuthTag().toString('base64'),data:encrypted.toString('base64')}), {mode:0o600}); await rename(temp,path);
 }
 
 export async function loadToken() {

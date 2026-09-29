@@ -98,7 +98,7 @@ async function route(req, res) {
   if (url.pathname === '/api/setup/config' && req.method === 'POST') {
     let raw=''; for await (const chunk of req) raw+=chunk; let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{error:'Invalid JSON'}); }
     const allowed=['EBAY_CLIENT_ID','EBAY_CLIENT_SECRET','EBAY_REDIRECT_URI','TOKEN_ENCRYPTION_KEY','APPROVAL_SECRET','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID'];
-    const lines=['PORT=8787','MOCK_MODE=true']; for(const key of allowed) if(typeof body[key]==='string'&&body[key].trim()) lines.push(`${key}=${body[key].trim()}`);
+    const lines=['PORT=8787',`MOCK_MODE=${mock?'true':'false'}`]; for(const key of allowed) if(typeof body[key]==='string'&&body[key].trim()) lines.push(`${key}=${body[key].trim()}`);
     const fs=await import('node:fs/promises'); await fs.writeFile(join(root,'.env'),lines.join('\n')+'\n','utf8');
     for(const key of allowed) if(typeof body[key]==='string'&&body[key].trim()) process.env[key]=body[key].trim();
     return json(res,200,{saved:true,message:'Saved locally. The connection is ready to authorize.'});
