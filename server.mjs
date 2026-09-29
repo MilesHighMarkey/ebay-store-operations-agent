@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { loadToken, saveToken } from './token-store.mjs';
 import { createEbayInventoryDraft, getInventory, getOrders, getSellerHealth, getNormalizedInventory, getNormalizedOrders } from './ebay-adapter.mjs';
 import { scoreOpportunity } from './vetting.mjs';
-import { buildDraft } from './listing-drafts.mjs';
+import { buildDraft, optimizeDraft } from './listing-drafts.mjs';
 import { buildHealthReport, deadlineAlerts } from './monitor.mjs';
 import { sendApprovalCard } from './telegram-adapter.mjs';
 import { scoreMarketSignal } from './market-signals.mjs';
@@ -171,6 +171,11 @@ async function route(req, res) {
     for(const key of ['title','description','category','itemLocation','returnTerms','shipping','handlingDays','estimatedTransitDays','estimatedDelivery','itemSpecifics']) if(body[key]!==undefined) draft[key]=body[key];
     if(Array.isArray(body.photos))draft.photos=body.photos.filter(Boolean).slice(0,12);
     draft.updatedAt=new Date().toISOString();auditEvent('Edited listing draft',draft.title,'Updated',{draftId:draft.id});return json(res,200,draft);
+  }
+  const draftOptimizeMatch=url.pathname.match(/^\/api\/listing-drafts\/([^/]+)\/optimize$/);
+  if(draftOptimizeMatch && req.method==='POST'){
+    const index=(state.listingDrafts||[]).findIndex(x=>x.id===draftOptimizeMatch[1]);if(index<0)return json(res,404,{error:'Draft not found'});
+    state.listingDrafts[index]=optimizeDraft(state.listingDrafts[index]);auditEvent('Optimized listing draft',state.listingDrafts[index].title,'Updated',{draftId:state.listingDrafts[index].id});return json(res,200,state.listingDrafts[index]);
   }
   if (url.pathname === '/api/monitor/health' && req.method === 'POST') {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})};return json(res,200,buildHealthReport(body));

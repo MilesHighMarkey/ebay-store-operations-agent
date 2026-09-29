@@ -15,3 +15,11 @@ export function buildDraft(input={}) {
     returnTerms,riskFlags,status:'draft',approvalRequired:true,publishable:false,sourceUrl:input.sourceUrl||null
   };
 }
+
+export function optimizeDraft(draft={}) {
+  const title=String(draft.title||'Product').replace(/\s+/g,' ').trim().slice(0,80);
+  const location=String(draft.itemLocation||'Not provided');
+  const delivery=`Estimated delivery: ${Number(draft.estimatedDelivery?.minimumDays||0)}–${Number(draft.estimatedDelivery?.maximumDays||0)} days. Handling time: ${Number(draft.handlingDays||0)} days.`;
+  const description=`${title}\n\n${draft.category||'Product'} for PowerPlayGoods customers.\n\nItem location: ${location}.\n${delivery}\n\nShipping cost is included in the displayed price. Product details, compatibility, photos, stock, delivery estimate, and supplier return terms must be verified before approval.`;
+  return {...draft,title,description,photos:[...(draft.photos||[])].filter(Boolean).sort(),itemSpecifics:{...(draft.itemSpecifics||{}),itemLocation:location,deliveryEstimate:delivery},optimizedAt:new Date().toISOString()};
+}
