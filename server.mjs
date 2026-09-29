@@ -132,7 +132,8 @@ async function route(req, res) {
   if (url.pathname === '/api/sync/ebay' && req.method === 'POST') {
     const [inventory,orders]=await Promise.all([getNormalizedInventory(),getNormalizedOrders()]);
     if(!inventory.connected||!orders.connected)return json(res,503,{synced:false,inventory,orders});
-    state.ebaySnapshot={inventory:inventory.items||[],orders:orders.orders||[],syncedAt:new Date().toISOString()};persist();return json(res,200,{synced:true,syncedAt:state.ebaySnapshot.syncedAt,inventoryCount:state.ebaySnapshot.inventory.length,orderCount:state.ebaySnapshot.orders.length});
+    const inventoryRisks=(inventory.items||[]).filter(x=>x.lowStock).map(x=>({type:'low_inventory',sku:x.sku,title:x.title,quantity:x.quantity})); const deadlineRisks=deadlineAlerts(orders.orders||[]); const trackingRisks=(orders.orders||[]).filter(x=>x.status!=='FULFILLED'&&x.trackingStatus==='missing').map(x=>({type:'missing_tracking',orderId:x.orderId}));
+    state.ebaySnapshot={inventory:inventory.items||[],orders:orders.orders||[],alerts:[...inventoryRisks,...deadlineRisks,...trackingRisks],syncedAt:new Date().toISOString()};persist();return json(res,200,{synced:true,syncedAt:state.ebaySnapshot.syncedAt,inventoryCount:state.ebaySnapshot.inventory.length,orderCount:state.ebaySnapshot.orders.length,alertCount:state.ebaySnapshot.alerts.length});
   }
   if (url.pathname === '/api/opportunities/score' && req.method === 'POST') {
     let raw=''; for await (const chunk of req) raw+=chunk;

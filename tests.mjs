@@ -25,6 +25,8 @@ assert.equal(draft.approvalRequired,true); assert.equal(draft.publishable,false)
 assert.match(approvalCard({action:'publish_listing',item:'Test item',status:'pending',id:'test-id'}),/Approval ID: test-id/);
 assert.equal(normalizeInventory({inventoryItems:[{sku:'x',product:{title:'Test'},availability:{shipToLocationAvailability:{quantity:4}}} ]})[0].quantity,4);
 assert.equal(normalizeOrders({orders:[{orderId:'o',pricingSummary:{total:{value:'12.50',currency:'USD'}},lineItems:[]} ]})[0].total,12.5);
+assert.equal(normalizeInventory({inventoryItems:[{sku:'low',availability:{shipToLocationAvailability:{quantity:1}}} ]})[0].lowStock,true);
+assert.equal(normalizeOrders({orders:[{orderId:'tracked',shippingFulfillments:[{shipmentTrackingNumber:'1Z'}],lineItems:[]} ]})[0].trackingStatus,'provided');
 assert.equal(scoreMarketSignal({sales30d:50,views30d:1000,watchers30d:80,competitorCount:4}).interpretation,'strong demand');
 const ranked=rankSuppliers([{name:'slow',cost:10,shipping:2,handlingDays:10,transitDays:20,stockConfidence:90,trackingReliability:90,returnTerms:'30-day returns',authorized:true},{name:'fast',cost:12,shipping:3,handlingDays:2,transitDays:5,stockConfidence:90,trackingReliability:90,returnTerms:'30-day returns',authorized:true}]);
 assert.equal(ranked[0].name,'fast'); assert.equal(ranked[0].eligible,true);
