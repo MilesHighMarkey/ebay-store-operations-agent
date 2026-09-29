@@ -20,6 +20,7 @@
       <aside class="panel"><p class="eyebrow">PROFIT MODEL</p><h2>Scenario calculator</h2><label>Sale price<input id="salePrice" type="number" value="34.99" step="0.01"></label><label>Supplier cost<input id="supplierCost" type="number" value="18.00" step="0.01"></label><label>Supplier shipping<input id="supplierShipping" type="number" value="8.00" step="0.01"></label><label>eBay fee %<input id="feePct" type="number" value="14" step="0.1"></label><label>Monthly sales<input id="salesVolume" type="number" value="20" step="1"></label><div class="calc"><span>Net profit / sale</span><strong id="profitPerSale">$0</strong><span>Projected monthly profit</span><strong id="projectedProfit">$0</strong></div><p id="calcNote" class="muted"></p></aside>
     </section>
     <section class="panel"><div class="panel-head"><div><p class="eyebrow">CONTROL CENTER</p><h2>Approval queue</h2></div><button id="approveAll">Approve low-risk drafts</button></div><div id="approvals" class="approval-list"></div><h3>Audit log</h3><div id="audit" class="approval-list"></div></section>
+    <section class="panel"><div class="panel-head"><div><p class="eyebrow">LISTING DRAFTS</p><h2>Edit before approval</h2></div></div><div id="listingDrafts" class="approval-list"><p class="muted">No backend drafts yet.</p></div></section>
   </main>
   <script src="app.js"></script>
 </body>

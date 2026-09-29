@@ -164,6 +164,14 @@ async function route(req, res) {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})}
     const draft={id:crypto.randomUUID(),...buildDraft(body),createdAt:new Date().toISOString()};state.listingDrafts=[...(state.listingDrafts||[]),draft];auditEvent('Created listing draft',draft.title,'Draft');return json(res,201,draft);
   }
+  const draftEditMatch=url.pathname.match(/^\/api\/listing-drafts\/([^/]+)$/);
+  if(draftEditMatch && req.method==='PATCH'){
+    let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'});}
+    const draft=(state.listingDrafts||[]).find(x=>x.id===draftEditMatch[1]);if(!draft)return json(res,404,{error:'Draft not found'});
+    for(const key of ['title','description','category','itemLocation','returnTerms','shipping','handlingDays','estimatedTransitDays','estimatedDelivery','itemSpecifics']) if(body[key]!==undefined) draft[key]=body[key];
+    if(Array.isArray(body.photos))draft.photos=body.photos.filter(Boolean).slice(0,12);
+    draft.updatedAt=new Date().toISOString();auditEvent('Edited listing draft',draft.title,'Updated',{draftId:draft.id});return json(res,200,draft);
+  }
   if (url.pathname === '/api/monitor/health' && req.method === 'POST') {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})};return json(res,200,buildHealthReport(body));
   }
