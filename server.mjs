@@ -27,7 +27,8 @@ const state = await loadState({
   adapters: { ebay: 'not connected', aliexpress: 'not connected', suppliers: 'mock catalog', telegram: 'not connected' },
   listingDrafts: [],
   suppliers: [],
-  audit: []
+  audit: [],
+  discovery: {lastRunAt:null,lastCreated:0,lastError:null}
 });
 const persist=()=>saveState(state).catch(()=>{});
 const dashboardSessions=new Set();
@@ -35,7 +36,7 @@ function ensureDashboardSession(req,res){const cookies=String(req.headers.cookie
 const auditEvent=(action,item,result,extra={})=>{state.audit=[...(state.audit||[]),{id:crypto.randomUUID(),action,item,result,at:new Date().toISOString(),...extra}].slice(-500);persist();};
 
 async function runAutomaticDiscovery(){
-  if(!process.env.ALIEXPRESS_APP_KEY||!process.env.ALIEXPRESS_APP_SECRET)return {ran:false,reason:'AliExpress credentials are not configured',created:0};
+  if(!process.env.ALIEXPRESS_APP_KEY||!process.env.ALIEXPRESS_APP_SECRET){state.discovery={lastRunAt:new Date().toISOString(),lastCreated:0,lastError:'AliExpress credentials are not configured'};persist();return {ran:false,reason:'AliExpress credentials are not configured',created:0};}
   const categories=['gaming accessories','controller adapter','retro gaming cable']; let created=0;
   for(const keywords of categories){
     const result=await searchAliExpress({keywords,deliveryDays:7,pageSize:20}); if(!result.connected)continue;
@@ -46,7 +47,7 @@ async function runAutomaticDiscovery(){
       const optimized=optimizeDraft(draft); state.listingDrafts=[...(state.listingDrafts||[]),optimized]; const approval={id:crypto.randomUUID(),action:'review_listing_draft',item:{draftId:optimized.id,title:optimized.title,profit:candidate.estimatedProfit,shippingDays:optimized.estimatedDelivery,origin:optimized.itemLocation,risks:optimized.riskFlags,sourceUrl:candidate.url},status:'pending',createdAt:new Date().toISOString()}; state.approvals.push(approval); auditEvent('Automatic product discovery',candidate.name,'Queued optimized draft for approval',{approvalId:approval.id}); await sendApprovalCard(approval); created++;
     }
   }
-  persist(); return {ran:true,created};
+  state.discovery={lastRunAt:new Date().toISOString(),lastCreated:created,lastError:null};persist(); return {ran:true,created};
 }
 
 try { if (await loadToken()) state.adapters.ebay='token stored; read-only mode'; } catch { /* setup status remains disconnected */ }
@@ -126,7 +127,7 @@ async function route(req, res) {
     const result=await searchAliExpress(body); if(result.connected) state.adapters.aliexpress='connected; product search read-only'; persist(); return json(res,result.connected?200:503,result);
   }
   if(url.pathname==='/api/discovery/run'&&req.method==='POST')return json(res,200,await runAutomaticDiscovery());
-  if (url.pathname === '/api/dashboard' && req.method === 'GET') { ensureDashboardSession(req,res); return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],audit:state.audit||[],ebaySnapshot:state.ebaySnapshot||null}); }
+  if (url.pathname === '/api/dashboard' && req.method === 'GET') { ensureDashboardSession(req,res); return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],audit:state.audit||[],discovery:state.discovery||null,ebaySnapshot:state.ebaySnapshot||null}); }
   if (url.pathname === '/api/audit' && req.method === 'GET') return json(res,200,state.audit||[]);
   if (url.pathname === '/api/ebay/inventory' && req.method === 'GET') return json(res, 200, await getInventory());
   if (url.pathname === '/api/ebay/orders' && req.method === 'GET') return json(res, 200, await getOrders());
