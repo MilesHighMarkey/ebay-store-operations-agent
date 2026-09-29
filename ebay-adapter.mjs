@@ -2,17 +2,18 @@ import { loadToken } from './token-store.mjs';
 import { normalizeInventory, normalizeOrders } from './normalizers.mjs';
 
 const apiBase='https://api.ebay.com';
+async function fetchWithRetry(url,options={},attempts=3){let last;for(let attempt=0;attempt<attempts;attempt++){try{const response=await fetch(url,options);if(![429,500,502,503,504].includes(response.status)||attempt===attempts-1)return response;last=new Error(`Transient eBay response ${response.status}`);}catch(error){last=error;if(attempt===attempts-1)throw error;}await new Promise(resolve=>setTimeout(resolve,250*(attempt+1)));}throw last;}
 async function ebayGet(path){
   const token=await loadToken();
   if(!token?.access_token) return {connected:false,error:'No stored eBay access token'};
-  const response=await fetch(`${apiBase}${path}`,{headers:{authorization:`Bearer ${token.access_token}`,accept:'application/json'}});
+  const response=await fetchWithRetry(`${apiBase}${path}`,{headers:{authorization:`Bearer ${token.access_token}`,accept:'application/json'}});
   const body=await response.text(); let data; try{data=JSON.parse(body)}catch{data={raw:body}};
   if(!response.ok) return {connected:true,error:`eBay API returned ${response.status}`,data};
   return {connected:true,data};
 }
 export async function createEbayInventoryDraft(sku,draft){
   const token=await loadToken(); if(!token?.access_token)return {connected:false,error:'No stored eBay access token'};
-  const response=await fetch(`${apiBase}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,{method:'PUT',headers:{authorization:`Bearer ${token.access_token}`,accept:'application/json','content-type':'application/json'},body:JSON.stringify({product:{title:draft.title,description:draft.description,imageUrls:draft.photos||[],aspects:draft.itemSpecifics||{}},condition:'NEW',availability:{shipToLocationAvailability:{quantity:0}}})});
+  const response=await fetchWithRetry(`${apiBase}/sell/inventory/v1/inventory_item/${encodeURIComponent(sku)}`,{method:'PUT',headers:{authorization:`Bearer ${token.access_token}`,accept:'application/json','content-type':'application/json'},body:JSON.stringify({product:{title:draft.title,description:draft.description,imageUrls:draft.photos||[],aspects:draft.itemSpecifics||{}},condition:'NEW',availability:{shipToLocationAvailability:{quantity:0}}})});
   const body=await response.text(); let data; try{data=body?JSON.parse(body):null}catch{data={raw:body}};
   return response.ok?{connected:true,sku,status:response.status,data}:{connected:true,error:`eBay inventory draft request failed (${response.status})`,status:response.status,data};
 }
