@@ -26,10 +26,12 @@ assert.match(approvalCard({action:'publish_listing',item:'Test item',status:'pen
 assert.equal(normalizeInventory({inventoryItems:[{sku:'x',product:{title:'Test'},availability:{shipToLocationAvailability:{quantity:4}}} ]})[0].quantity,4);
 assert.equal(normalizeOrders({orders:[{orderId:'o',pricingSummary:{total:{value:'12.50',currency:'USD'}},lineItems:[]} ]})[0].total,12.5);
 assert.equal(scoreMarketSignal({sales30d:50,views30d:1000,watchers30d:80,competitorCount:4}).interpretation,'strong demand');
-const ranked=rankSuppliers([{name:'slow',cost:10,shipping:2,handlingDays:10,transitDays:20,stockConfidence:90,authorized:true},{name:'fast',cost:12,shipping:3,handlingDays:2,transitDays:5,stockConfidence:90,authorized:true}]);
+const ranked=rankSuppliers([{name:'slow',cost:10,shipping:2,handlingDays:10,transitDays:20,stockConfidence:90,trackingReliability:90,returnTerms:'30-day returns',authorized:true},{name:'fast',cost:12,shipping:3,handlingDays:2,transitDays:5,stockConfidence:90,trackingReliability:90,returnTerms:'30-day returns',authorized:true}]);
 assert.equal(ranked[0].name,'fast'); assert.equal(ranked[0].eligible,true);
-const us=rankSuppliers([{name:'us-stock',cost:14,shipping:3,handlingDays:2,transitDays:3,stockConfidence:90,rating:4.8,reviewCount:200,shipFrom:'United States',authorized:true}])[0];
+const us=rankSuppliers([{name:'us-stock',cost:14,shipping:3,handlingDays:2,transitDays:3,stockConfidence:90,rating:4.8,reviewCount:200,trackingReliability:95,returnTerms:'30-day returns',shipFrom:'United States',authorized:true}])[0];
 assert.equal(us.usWarehouse,true); assert.equal(us.eligible,true);
+const risky=rankSuppliers([{name:'unknown',cost:10,shipping:2,handlingDays:2,transitDays:3,stockConfidence:80,authorized:true}])[0];
+assert.equal(risky.eligible,false); assert.ok(risky.riskFlags.includes('Tracking reliability not verified')); assert.ok(risky.riskFlags.includes('Return/refund terms not provided'));
 assert.equal(recommendPrice({supplierCost:10,supplierShipping:2,targetProfit:10,marketMedian:30}).shippingIncluded,true);
 assert.equal(profitReport([{sku:'x',revenue:30}],{x:10},14).summary.profit,15.8);
 const discovered=scoreDiscoveredProducts([{name:'Fast US candidate',marketPrice:39.99,cost:18,shipping:4,monthlySales:60,rating:4.8,reviewCount:200,stockConfidence:90,shipFrom:'United States',handlingDays:2,transitDays:4}])[0];
