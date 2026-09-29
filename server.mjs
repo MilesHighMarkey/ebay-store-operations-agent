@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadToken, saveToken } from './token-store.mjs';
-import { getInventory, getOrders, getSellerHealth, getNormalizedInventory, getNormalizedOrders } from './ebay-adapter.mjs';
+import { createEbayInventoryDraft, getInventory, getOrders, getSellerHealth, getNormalizedInventory, getNormalizedOrders } from './ebay-adapter.mjs';
 import { scoreOpportunity } from './vetting.mjs';
 import { buildDraft } from './listing-drafts.mjs';
 import { buildHealthReport, deadlineAlerts } from './monitor.mjs';
@@ -119,6 +119,15 @@ async function route(req, res) {
     if (!result.data) return json(res,result.connected?502:401,result);
     const raw=result.data; const profile=raw.sellerStandardsProfile||raw; const metrics=profile.metrics||profile;
     return json(res,200,{connected:true,raw,report:buildHealthReport({transactionDefectRate:metrics.transactionDefectRate,lateShipmentRate:metrics.lateShipmentRate,trackingValidatedPct:metrics.trackingValidatedPct,casesClosedWithoutResolution:metrics.casesClosedWithoutResolution})});
+  }
+  const draftSubmitMatch=url.pathname.match(/^\/api\/ebay\/listing-drafts\/([^/]+)\/submit$/);
+  if (draftSubmitMatch && req.method === 'POST') {
+    let raw=''; for await(const chunk of req) raw+=chunk; let body; try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'});}
+    const draft=(state.listingDrafts||[]).find(x=>x.id===draftSubmitMatch[1]); const approval=(state.approvals||[]).find(x=>x.id===body.approvalId);
+    if(!draft||!approval)return json(res,404,{error:'Draft or approval not found'});
+    if(approval.status!=='approved'||!['review_listing_draft','create_ebay_listing_draft'].includes(approval.action))return json(res,409,{error:'An approved listing-draft approval is required'});
+    if(!state.health.liveActionsEnabled)return json(res,403,{error:'Live eBay actions are disabled. Enable the explicit live-actions feature flag before submitting.'});
+    const result=await createEbayInventoryDraft(String(body.sku||draft.sku||draft.title).slice(0,50),draft); auditEvent('Submitted eBay listing draft',draft.title,result.error?'Failed':'Submitted',{approvalId:approval.id}); return json(res,result.error?502:200,result);
   }
   if (url.pathname === '/api/sync/ebay' && req.method === 'POST') {
     const [inventory,orders]=await Promise.all([getNormalizedInventory(),getNormalizedOrders()]);
