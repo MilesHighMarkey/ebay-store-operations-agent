@@ -23,7 +23,7 @@ const mock = process.env.MOCK_MODE !== 'false';
 
 const state = await loadState({
   approvals: [],
-  health: { mode: mock ? 'mock' : 'live', liveActionsEnabled: false, sellerLevel: 'unknown' },
+  health: { mode: mock ? 'mock' : 'live', liveActionsEnabled: process.env.ENABLE_LIVE_EBAY_ACTIONS === 'true', sellerLevel: 'unknown' },
   adapters: { ebay: 'not connected', aliexpress: 'not connected', suppliers: 'mock catalog', telegram: 'not connected' },
   listingDrafts: [],
   suppliers: [],
@@ -215,7 +215,13 @@ async function route(req, res) {
     let raw='';for await(const chunk of req)raw+=chunk;let body;try{body=JSON.parse(raw||'{}')}catch{return json(res,400,{error:'Invalid JSON'})}
     if(!['approved','rejected'].includes(body.decision))return json(res,400,{error:'decision must be approved or rejected'});
     const item=state.approvals.find(x=>x.id===decisionMatch[1]);if(!item)return json(res,404,{error:'Approval not found'});
-    item.status=body.decision;item.decidedAt=new Date().toISOString();item.decidedBy=body.decidedBy||'approval-channel';auditEvent('Approval decision',item.item?.title||item.item?.name||item.action,body.decision,{approvalId:item.id,decidedBy:item.decidedBy});return json(res,200,item);
+    item.status=body.decision;item.decidedAt=new Date().toISOString();item.decidedBy=body.decidedBy||'approval-channel';auditEvent('Approval decision',item.item?.title||item.item?.name||item.action,body.decision,{approvalId:item.id,decidedBy:item.decidedBy});
+    if(body.decision==='approved'&&item.action==='review_listing_draft'){
+      const draft=(state.listingDrafts||[]).find(x=>x.id===item.item?.draftId);
+      if(state.health.liveActionsEnabled&&draft){const result=await createEbayInventoryDraft(String(body.sku||draft.sku||draft.title).slice(0,50),draft);auditEvent('Approved eBay listing draft',draft.title,result.error?'Submission failed':'Submitted',{approvalId:item.id});item.execution=result.error?'failed':'submitted';}
+      else {item.execution='ready_for_explicit_submission';auditEvent('Approved listing draft',draft?.title||item.action,'Ready; live actions disabled',{approvalId:item.id});}
+    }
+    persist();return json(res,200,item);
   }
   const requested = url.pathname === '/' ? '/index.html' : url.pathname;
   const safe = requested.replaceAll('..','');
