@@ -130,10 +130,11 @@ async function route(req, res) {
     const result=await createEbayInventoryDraft(String(body.sku||draft.sku||draft.title).slice(0,50),draft); auditEvent('Submitted eBay listing draft',draft.title,result.error?'Failed':'Submitted',{approvalId:approval.id}); return json(res,result.error?502:200,result);
   }
   if (url.pathname === '/api/sync/ebay' && req.method === 'POST') {
-    const [inventory,orders]=await Promise.all([getNormalizedInventory(),getNormalizedOrders()]);
+    const [inventory,orders,health]=await Promise.all([getNormalizedInventory(),getNormalizedOrders(),getSellerHealth()]);
     if(!inventory.connected||!orders.connected)return json(res,503,{synced:false,inventory,orders});
     const inventoryRisks=(inventory.items||[]).filter(x=>x.lowStock).map(x=>({type:'low_inventory',sku:x.sku,title:x.title,quantity:x.quantity})); const deadlineRisks=deadlineAlerts(orders.orders||[]); const trackingRisks=(orders.orders||[]).filter(x=>x.status!=='FULFILLED'&&x.trackingStatus==='missing').map(x=>({type:'missing_tracking',orderId:x.orderId}));
-    state.ebaySnapshot={inventory:inventory.items||[],orders:orders.orders||[],alerts:[...inventoryRisks,...deadlineRisks,...trackingRisks],syncedAt:new Date().toISOString()};persist();return json(res,200,{synced:true,syncedAt:state.ebaySnapshot.syncedAt,inventoryCount:state.ebaySnapshot.inventory.length,orderCount:state.ebaySnapshot.orders.length,alertCount:state.ebaySnapshot.alerts.length});
+    const healthReport=health.data?buildHealthReport(health.data.sellerStandardsProfile?.metrics||health.data):null; if(healthReport?.alerts?.length) for(const alert of healthReport.alerts) state.audit=[...(state.audit||[]),{id:crypto.randomUUID(),action:'Seller health alert',item:'eBay seller standards',result:alert,at:new Date().toISOString()}];
+    state.ebaySnapshot={inventory:inventory.items||[],orders:orders.orders||[],health:healthReport,alerts:[...inventoryRisks,...deadlineRisks,...trackingRisks,...(healthReport?.alerts||[]).map(type=>({type:'seller_health',message:type}))],syncedAt:new Date().toISOString()};persist();return json(res,200,{synced:true,syncedAt:state.ebaySnapshot.syncedAt,inventoryCount:state.ebaySnapshot.inventory.length,orderCount:state.ebaySnapshot.orders.length,alertCount:state.ebaySnapshot.alerts.length,healthAvailable:Boolean(healthReport)});
   }
   if (url.pathname === '/api/opportunities/score' && req.method === 'POST') {
     let raw=''; for await (const chunk of req) raw+=chunk;
