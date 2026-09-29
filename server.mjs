@@ -115,6 +115,8 @@ async function route(req, res) {
     return json(res,200,{products:scoreDiscoveredProducts(body.products||[],body.options||[])});
   }
   if (url.pathname === '/api/setup/config' && req.method === 'POST') {
+    const host=String(req.headers.host||'').split(':')[0].toLowerCase();
+    if (!['localhost','127.0.0.1','[::1]'].includes(host)) return json(res,403,{error:'Credential configuration is local-only. Set secrets in the deployment environment.'});
     let raw=''; for await (const chunk of req) raw+=chunk; let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{error:'Invalid JSON'}); }
     const allowed=['EBAY_CLIENT_ID','EBAY_CLIENT_SECRET','EBAY_REDIRECT_URI','TOKEN_ENCRYPTION_KEY','APPROVAL_SECRET','TELEGRAM_BOT_TOKEN','TELEGRAM_CHAT_ID'];
     const lines=['PORT=8787',`MOCK_MODE=${mock?'true':'false'}`]; for(const key of allowed) if(typeof body[key]==='string'&&body[key].trim()) lines.push(`${key}=${body[key].trim()}`);
