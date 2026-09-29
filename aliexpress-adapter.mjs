@@ -40,5 +40,5 @@ export async function searchAliExpress(options={}) {
   const root=body?.aliexpress_affiliate_product_query_response?.resp_result||body?.resp_result;
   if(root?.resp_code&&Number(root.resp_code)!==200) return {connected:false,error:root.resp_msg||`AliExpress API error ${root.resp_code}`,products:[]};
   const raw=root?.result?.products?.product||root?.result?.products||root?.result?.product||[];
-  return {connected:true,products:Array.isArray(raw)?raw.map(normalizeProduct):[],page:root?.result?.current_page_no||1,total:root?.result?.total_record_count||0};
+  return {connected:true,products:Array.isArray(raw)?raw.map(normalizeProduct):[],page:root?.result?.current_page_no||1,total:root?.result?.total_record_count||0,diagnostics:{rootKeys:Object.keys(root||{}),resultKeys:Object.keys(root?.result||{}),productContainer:root?.result?.products==null?'missing':Array.isArray(root.result.products)?'array':typeof root.result.products}};
 }
