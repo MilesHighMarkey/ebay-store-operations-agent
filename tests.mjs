@@ -21,6 +21,7 @@ const alerts=deadlineAlerts([{orderId:'urgent',shipBy:'2026-09-21T20:00:00Z'},{o
 assert.equal(alerts.length,1); assert.equal(alerts[0].level,'urgent');
 const draft=buildDraft({name:'Test item',category:'Games',salePrice:30,supplierShipping:8,shipDays:20,supplierAuthorized:false});
 assert.equal(draft.shippingIncluded,true); assert.ok(draft.riskFlags.includes('Long supplier transit')); assert.ok(draft.riskFlags.includes('Supplier authorization not verified'));
+assert.equal(draft.approvalRequired,true); assert.equal(draft.publishable,false); assert.equal(draft.shipping.costIncludedInPrice,true); assert.ok(draft.estimatedDelivery.maximumDays>draft.estimatedTransitDays);
 assert.match(approvalCard({action:'publish_listing',item:'Test item',status:'pending',id:'test-id'}),/Approval ID: test-id/);
 assert.equal(normalizeInventory({inventoryItems:[{sku:'x',product:{title:'Test'},availability:{shipToLocationAvailability:{quantity:4}}} ]})[0].quantity,4);
 assert.equal(normalizeOrders({orders:[{orderId:'o',pricingSummary:{total:{value:'12.50',currency:'USD'}},lineItems:[]} ]})[0].total,12.5);
