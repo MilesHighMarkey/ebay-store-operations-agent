@@ -23,7 +23,7 @@ const mock = process.env.MOCK_MODE !== 'false';
 const state = await loadState({
   approvals: [],
   health: { mode: mock ? 'mock' : 'live', liveActionsEnabled: false, sellerLevel: 'unknown' },
-  adapters: { ebay: 'not connected', suppliers: 'mock catalog', telegram: 'not connected' },
+  adapters: { ebay: 'not connected', aliexpress: 'not connected', suppliers: 'mock catalog', telegram: 'not connected' },
   listingDrafts: [],
   suppliers: []
 });
@@ -39,6 +39,7 @@ const ebayScopes = [
 ];
 
 const json = (res, status, body) => { res.writeHead(status, {'content-type':'application/json'}); res.end(JSON.stringify(body)); };
+const html = (res, status, body) => { res.writeHead(status, {'content-type':'text/html; charset=utf-8'}); res.end(body); };
 const staticTypes = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json'};
 
 async function route(req, res) {
@@ -56,6 +57,21 @@ async function route(req, res) {
     if (!response.ok) return json(res,502,{connected:false,error:`eBay token exchange failed (${response.status})`});
     const token=await response.json(); await saveToken(token); state.adapters.ebay='token stored; read-only mode';
     return json(res,200,{connected:true,message:'eBay authorization stored securely; live mutations remain disabled'});
+  }
+  // AliExpress uses this callback during app authorization. Keep the code out of
+  // logs and persistent state; the exchange/credential setup is completed later.
+  if ((url.pathname === '/api/aliexpress/callback' || url.pathname === '/auth/aliexpress/callback') && req.method === 'GET') {
+    const error = url.searchParams.get('error');
+    const code = url.searchParams.get('code') || url.searchParams.get('auth_code');
+    if (error) {
+      state.adapters.aliexpress = `authorization error: ${error}`;
+      persist();
+      return html(res, 400, '<!doctype html><title>AliExpress authorization</title><h1>Authorization was not completed</h1><p>You can close this window and try again.</p>');
+    }
+    if (!code) return html(res, 400, '<!doctype html><title>AliExpress authorization</title><h1>Missing authorization code</h1><p>No authorization response was received.</p>');
+    state.adapters.aliexpress = 'authorization callback received; credentials not stored';
+    persist();
+    return html(res, 200, '<!doctype html><title>AliExpress authorization</title><h1>AliExpress authorization received</h1><p>You can close this window and return to the Store Operations Agent.</p>');
   }
   if (url.pathname === '/api/status') return json(res, 200, state);
   if (url.pathname === '/api/discovery/score' && req.method === 'POST') {
