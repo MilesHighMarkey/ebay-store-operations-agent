@@ -41,6 +41,13 @@ const ebayScopes = [
 const json = (res, status, body) => { res.writeHead(status, {'content-type':'application/json'}); res.end(JSON.stringify(body)); };
 const html = (res, status, body) => { res.writeHead(status, {'content-type':'text/html; charset=utf-8'}); res.end(body); };
 const staticTypes = {'.html':'text/html','.js':'text/javascript','.css':'text/css','.json':'application/json'};
+async function finishEbayAuthorization(code) {
+  if (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET || !process.env.TOKEN_ENCRYPTION_KEY) throw new Error('eBay credentials and TOKEN_ENCRYPTION_KEY are required');
+  const basic=Buffer.from(`${process.env.EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString('base64');
+  const response=await fetch('https://api.ebay.com/identity/v1/oauth2/token',{method:'POST',headers:{authorization:`Basic ${basic}`,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code,redirect_uri:process.env.EBAY_REDIRECT_URI})});
+  if (!response.ok) throw new Error(`eBay token exchange failed (${response.status})`);
+  const token=await response.json(); await saveToken(token); state.adapters.ebay='token stored; read-only mode'; persist();
+}
 
 async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
@@ -52,11 +59,18 @@ async function route(req, res) {
   if (url.pathname === '/auth/ebay/callback') {
     if (!url.searchParams.get('code')) return json(res, 400, {connected:false, error:'Missing OAuth authorization code'});
     if (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET || !process.env.TOKEN_ENCRYPTION_KEY) return json(res, 503, {connected:false, error:'OAuth callback received, but client credentials and TOKEN_ENCRYPTION_KEY are required'});
-    const basic=Buffer.from(`${process.env.EBAY_CLIENT_ID}:${process.env.EBAY_CLIENT_SECRET}`).toString('base64');
-    const response=await fetch('https://api.ebay.com/identity/v1/oauth2/token',{method:'POST',headers:{authorization:`Basic ${basic}`,'content-type':'application/x-www-form-urlencoded'},body:new URLSearchParams({grant_type:'authorization_code',code:url.searchParams.get('code'),redirect_uri:process.env.EBAY_REDIRECT_URI})});
-    if (!response.ok) return json(res,502,{connected:false,error:`eBay token exchange failed (${response.status})`});
-    const token=await response.json(); await saveToken(token); state.adapters.ebay='token stored; read-only mode';
+    try { await finishEbayAuthorization(url.searchParams.get('code')); }
+    catch (error) { return json(res,502,{connected:false,error:error.message}); }
     return json(res,200,{connected:true,message:'eBay authorization stored securely; live mutations remain disabled'});
+  }
+  if (url.pathname === '/api/ebay/complete' && req.method === 'POST') {
+    let raw=''; for await (const chunk of req) raw+=chunk;
+    let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{connected:false,error:'Invalid JSON'}); }
+    let code=body.code;
+    try { if (!code && body.authorizationUrl) code=new URL(body.authorizationUrl).searchParams.get('code'); } catch { }
+    if (!code) return json(res,400,{connected:false,error:'Paste the full eBay authorization-success URL or its code'});
+    try { await finishEbayAuthorization(code); return json(res,200,{connected:true,message:'eBay authorization stored securely; live mutations remain disabled'}); }
+    catch (error) { return json(res,502,{connected:false,error:error.message}); }
   }
   // AliExpress uses this callback during app authorization. Keep the code out of
   // logs and persistent state; the exchange/credential setup is completed later.
