@@ -12,5 +12,7 @@ async function ebayGet(path){
 }
 export const getInventory=()=>ebayGet('/sell/inventory/v1/inventory_item?limit=200');
 export const getOrders=()=>ebayGet('/sell/fulfillment/v1/order?limit=100&filter=orderfulfillmentstatus:%7BNOT_STARTED%7CIN_PROGRESS%7D');
+// Read-only seller standards profile; eBay may return marketplace-specific metrics.
+export const getSellerHealth=()=>ebayGet('/sell/analytics/v1/seller_standards_profile?program=PROGRAM_US');
 export async function getNormalizedInventory(){const result=await getInventory();return result.data?{...result,items:normalizeInventory(result.data)}:result}
 export async function getNormalizedOrders(){const result=await getOrders();return result.data?{...result,orders:normalizeOrders(result.data)}:result}

@@ -3,7 +3,7 @@ import { readFile } from 'node:fs/promises';
 import { extname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { loadToken, saveToken } from './token-store.mjs';
-import { getInventory, getOrders, getNormalizedInventory, getNormalizedOrders } from './ebay-adapter.mjs';
+import { getInventory, getOrders, getSellerHealth, getNormalizedInventory, getNormalizedOrders } from './ebay-adapter.mjs';
 import { scoreOpportunity } from './vetting.mjs';
 import { buildDraft } from './listing-drafts.mjs';
 import { buildHealthReport, deadlineAlerts } from './monitor.mjs';
@@ -114,6 +114,12 @@ async function route(req, res) {
   if (url.pathname === '/api/ebay/orders' && req.method === 'GET') return json(res, 200, await getOrders());
   if (url.pathname === '/api/ebay/inventory/normalized' && req.method === 'GET') return json(res, 200, await getNormalizedInventory());
   if (url.pathname === '/api/ebay/orders/normalized' && req.method === 'GET') return json(res, 200, await getNormalizedOrders());
+  if (url.pathname === '/api/ebay/health' && req.method === 'GET') {
+    const result=await getSellerHealth();
+    if (!result.data) return json(res,result.connected?502:401,result);
+    const raw=result.data; const profile=raw.sellerStandardsProfile||raw; const metrics=profile.metrics||profile;
+    return json(res,200,{connected:true,raw,report:buildHealthReport({transactionDefectRate:metrics.transactionDefectRate,lateShipmentRate:metrics.lateShipmentRate,trackingValidatedPct:metrics.trackingValidatedPct,casesClosedWithoutResolution:metrics.casesClosedWithoutResolution})});
+  }
   if (url.pathname === '/api/sync/ebay' && req.method === 'POST') {
     const [inventory,orders]=await Promise.all([getNormalizedInventory(),getNormalizedOrders()]);
     if(!inventory.connected||!orders.connected)return json(res,503,{synced:false,inventory,orders});
