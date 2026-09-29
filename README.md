@@ -29,7 +29,9 @@ POST /api/listing-drafts
 POST /api/approvals
 ```
 
-To connect eBay, create an eBay developer application, set its redirect URI to the value in `.env`, add `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, and a strong `TOKEN_ENCRYPTION_KEY`, then visit `/auth/ebay/start`. The resulting token is stored locally and the agent remains read-only.
+To connect eBay, create an eBay developer application, set its OAuth-enabled RuName/accepted URL to the deployed callback, add `EBAY_CLIENT_ID`, `EBAY_CLIENT_SECRET`, `EBAY_REDIRECT_URI`, and a strong `TOKEN_ENCRYPTION_KEY`, then visit `/auth/ebay/start`. If eBay finishes on its success page, paste that full URL into the dashboard's completion field. The resulting token is stored encrypted and the agent remains read-only.
+
+For permitted AliExpress catalog discovery, add `ALIEXPRESS_APP_KEY`, `ALIEXPRESS_APP_SECRET`, and optionally `ALIEXPRESS_TRACKING_ID`. The dashboard's read-only search uses the official product-query endpoint, sends U.S. destination and delivery filters, and scores the returned candidates before they enter review. It does not scrape pages, place supplier orders, or publish listings.
 
 ## MVP rules
 
