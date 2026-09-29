@@ -32,6 +32,7 @@ const state = await loadState({
 });
 const persist=()=>saveState(state).catch(()=>{});
 const dashboardSessions=new Set();
+const ebayOauthStates=new Set();
 function ensureDashboardSession(req,res){const cookies=String(req.headers.cookie||'');const found=cookies.match(/(?:^|;\s*)dashboard_session=([^;]+)/);if(found&&dashboardSessions.has(found[1]))return true;const token=crypto.randomUUID();dashboardSessions.add(token);res.setHeader('Set-Cookie',`dashboard_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);return true;}
 const auditEvent=(action,item,result,extra={})=>{state.audit=[...(state.audit||[]),{id:crypto.randomUUID(),action,item,result,at:new Date().toISOString(),...extra}].slice(-500);persist();};
 function estimateMarketPrice(candidate, keywords) {
@@ -82,15 +83,17 @@ async function route(req, res) {
   const url = new URL(req.url, `http://${req.headers.host}`);
   if (url.pathname === '/auth/ebay/start') {
     if (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_REDIRECT_URI) return json(res, 503, {connected:false, error:'EBAY_CLIENT_ID and EBAY_REDIRECT_URI are required'});
-    const params = new URLSearchParams({client_id:process.env.EBAY_CLIENT_ID, redirect_uri:process.env.EBAY_REDIRECT_URI, response_type:'code', scope:ebayScopes.join(' ')});
+    const stateToken=crypto.randomUUID(); ebayOauthStates.add(stateToken); setTimeout(()=>ebayOauthStates.delete(stateToken),10*60*1000).unref?.();
+    const params = new URLSearchParams({client_id:process.env.EBAY_CLIENT_ID, redirect_uri:process.env.EBAY_REDIRECT_URI, response_type:'code', scope:ebayScopes.join(' '),state:stateToken,prompt:'login'});
     return json(res, 200, {connected:false, authorizationUrl:`https://auth.ebay.com/oauth2/authorize?${params}`});
   }
   if (url.pathname === '/auth/ebay/callback') {
     if (!url.searchParams.get('code')) return json(res, 400, {connected:false, error:'Missing OAuth authorization code'});
+    const returnedState=url.searchParams.get('state'); if(!returnedState||!ebayOauthStates.delete(returnedState)) return json(res,400,{connected:false,error:'Invalid or expired eBay OAuth state. Start authorization again.'});
     if (!process.env.EBAY_CLIENT_ID || !process.env.EBAY_CLIENT_SECRET || !process.env.TOKEN_ENCRYPTION_KEY) return json(res, 503, {connected:false, error:'OAuth callback received, but client credentials and TOKEN_ENCRYPTION_KEY are required'});
     try { await finishEbayAuthorization(url.searchParams.get('code')); }
     catch (error) { return json(res,502,{connected:false,error:error.message}); }
-    return json(res,200,{connected:true,message:'eBay authorization stored securely; live mutations remain disabled'});
+    res.writeHead(303,{location:'/'}); return res.end();
   }
   if (url.pathname === '/api/ebay/complete' && req.method === 'POST') {
     let raw=''; for await (const chunk of req) raw+=chunk;
