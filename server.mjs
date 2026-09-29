@@ -34,6 +34,21 @@ const dashboardSessions=new Set();
 function ensureDashboardSession(req,res){const cookies=String(req.headers.cookie||'');const found=cookies.match(/(?:^|;\s*)dashboard_session=([^;]+)/);if(found&&dashboardSessions.has(found[1]))return true;const token=crypto.randomUUID();dashboardSessions.add(token);res.setHeader('Set-Cookie',`dashboard_session=${token}; HttpOnly; SameSite=Strict; Path=/; Max-Age=86400`);return true;}
 const auditEvent=(action,item,result,extra={})=>{state.audit=[...(state.audit||[]),{id:crypto.randomUUID(),action,item,result,at:new Date().toISOString(),...extra}].slice(-500);persist();};
 
+async function runAutomaticDiscovery(){
+  if(!process.env.ALIEXPRESS_APP_KEY||!process.env.ALIEXPRESS_APP_SECRET)return {ran:false,reason:'AliExpress credentials are not configured',created:0};
+  const categories=['gaming accessories','controller adapter','retro gaming cable']; let created=0;
+  for(const keywords of categories){
+    const result=await searchAliExpress({keywords,deliveryDays:7,pageSize:20}); if(!result.connected)continue;
+    const scored=scoreDiscoveredProducts((result.products||[]).map(p=>({...p,marketPrice:39.99,handlingDays:0,transitDays:p.transitDays||7})),{targetProfit:10});
+    for(const candidate of scored.filter(x=>x.decision==='review').slice(0,5)){
+      const duplicate=(state.approvals||[]).some(x=>x.item?.sourceUrl&&x.item.sourceUrl===candidate.url&&x.status!=='rejected'); if(duplicate)continue;
+      const draft={id:crypto.randomUUID(),...buildDraft({name:candidate.name,category:candidate.category||keywords,salePrice:candidate.marketPrice,supplierShipping:candidate.shipping||0,shipDays:candidate.transitDays||7,handlingDays:candidate.handlingDays||2,shipFrom:candidate.shipFrom,itemLocation:candidate.shipFrom,photos:candidate.image?[candidate.image]:[],sourceUrl:candidate.url,itemSpecifics:{sourceUrl:candidate.url,source:candidate.source,shipFrom:candidate.shipFrom,estimatedProfit:candidate.estimatedProfit,reviewCount:candidate.reviewCount}}),createdAt:new Date().toISOString()};
+      state.listingDrafts=[...(state.listingDrafts||[]),draft]; const approval={id:crypto.randomUUID(),action:'review_listing_draft',item:{draftId:draft.id,title:draft.title,profit:candidate.estimatedProfit,shippingDays:draft.estimatedDelivery,origin:draft.itemLocation,risks:draft.riskFlags,sourceUrl:candidate.url},status:'pending',createdAt:new Date().toISOString()}; state.approvals.push(approval); auditEvent('Automatic product discovery',candidate.name,'Queued for approval',{approvalId:approval.id}); await sendApprovalCard(approval); created++;
+    }
+  }
+  persist(); return {ran:true,created};
+}
+
 try { if (await loadToken()) state.adapters.ebay='token stored; read-only mode'; } catch { /* setup status remains disconnected */ }
 
 const ebayScopes = [
@@ -110,6 +125,7 @@ async function route(req, res) {
     let raw=''; for await (const chunk of req) raw+=chunk; let body; try { body=JSON.parse(raw||'{}'); } catch { return json(res,400,{connected:false,error:'Invalid JSON',products:[]}); }
     const result=await searchAliExpress(body); if(result.connected) state.adapters.aliexpress='connected; product search read-only'; persist(); return json(res,result.connected?200:503,result);
   }
+  if(url.pathname==='/api/discovery/run'&&req.method==='POST')return json(res,200,await runAutomaticDiscovery());
   if (url.pathname === '/api/dashboard' && req.method === 'GET') { ensureDashboardSession(req,res); return json(res,200,{health:state.health,adapters:state.adapters,approvals:state.approvals||[],listingDrafts:state.listingDrafts||[],suppliers:state.suppliers||[],audit:state.audit||[],ebaySnapshot:state.ebaySnapshot||null}); }
   if (url.pathname === '/api/audit' && req.method === 'GET') return json(res,200,state.audit||[]);
   if (url.pathname === '/api/ebay/inventory' && req.method === 'GET') return json(res, 200, await getInventory());
@@ -207,4 +223,4 @@ async function route(req, res) {
   catch { json(res,404,{error:'Not found'}); }
 }
 
-http.createServer((req,res)=>route(req,res).catch(err=>json(res,500,{error:err.message}))).listen(port,()=>console.log(`Store agent running at http://localhost:${port} (${mock?'mock':'live'} mode)`));
+http.createServer((req,res)=>route(req,res).catch(err=>json(res,500,{error:err.message}))).listen(port,()=>{console.log(`Store agent running at http://localhost:${port} (${mock?'mock':'live'} mode)`);if(process.env.ALIEXPRESS_APP_KEY&&process.env.ALIEXPRESS_APP_SECRET){setTimeout(()=>runAutomaticDiscovery().catch(error=>console.error('Automatic discovery failed:',error.message)),15000);setInterval(()=>runAutomaticDiscovery().catch(error=>console.error('Automatic discovery failed:',error.message)),6*60*60*1000);}});
