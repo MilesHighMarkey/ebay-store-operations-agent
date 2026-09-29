@@ -1,0 +1,6 @@
+{
+  "name": "eh-commerce-store-agent",
+  "private": true,
+  "type": "module",
+  "scripts": {"start": "node server.mjs", "check": "node --check server.mjs", "test": "node tests.mjs"}
+}
