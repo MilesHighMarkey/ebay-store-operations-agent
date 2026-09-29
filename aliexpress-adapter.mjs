@@ -36,7 +36,14 @@ export async function searchAliExpress(options={}) {
   params.sign=signAliExpress(params,secret);
   let response,text,body;
   try {
-    response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=utf-8'},body:new URLSearchParams(params)});
+    let lastError;
+    for(let attempt=0;attempt<3;attempt++) {
+      try {
+        response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=utf-8'},body:new URLSearchParams(params)});
+        break;
+      } catch(error) { lastError=error; if(attempt<2) await new Promise(resolve=>setTimeout(resolve,250*(attempt+1))); }
+    }
+    if(!response) throw lastError||new Error('No response received');
     text=await response.text();
     try{body=JSON.parse(text)}catch{body={raw:text}}
   } catch(error) {
