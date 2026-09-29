@@ -34,11 +34,18 @@ export async function searchAliExpress(options={}) {
   if(options.deliveryDays) params.delivery_days=String(options.deliveryDays);
   if(options.categoryIds) params.category_ids=String(options.categoryIds);
   params.sign=signAliExpress(params,secret);
-  const response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=utf-8'},body:new URLSearchParams(params)});
-  const text=await response.text(); let body; try{body=JSON.parse(text)}catch{body={raw:text}}
-  if(!response.ok) return {connected:false,error:`AliExpress API request failed (${response.status})`,products:[]};
+  let response,text,body;
+  try {
+    response=await fetch(endpoint,{method:'POST',headers:{'content-type':'application/x-www-form-urlencoded;charset=utf-8'},body:new URLSearchParams(params)});
+    text=await response.text();
+    try{body=JSON.parse(text)}catch{body={raw:text}}
+  } catch(error) {
+    return {connected:false,error:`AliExpress API request failed: ${error.message}`,products:[],diagnostics:{endpoint}};
+  }
+  if(!response.ok) return {connected:false,error:`AliExpress API request failed (${response.status})`,products:[],diagnostics:{endpoint,bodyKeys:Object.keys(body||{})}};
   const root=body?.aliexpress_affiliate_product_query_response?.resp_result||body?.resp_result;
-  if(root?.resp_code&&Number(root.resp_code)!==200) return {connected:false,error:root.resp_msg||`AliExpress API error ${root.resp_code}`,products:[]};
+  if(!root) return {connected:false,error:'AliExpress returned an unrecognized response envelope',products:[],diagnostics:{endpoint,bodyKeys:Object.keys(body||{}),responsePreview:String(text||'').slice(0,160)}};
+  if(root?.resp_code&&Number(root.resp_code)!==200) return {connected:false,error:root.resp_msg||`AliExpress API error ${root.resp_code}`,products:[],diagnostics:{bodyKeys:Object.keys(body||{}),rootKeys:Object.keys(root||{})}};
   const raw=root?.result?.products?.product||root?.result?.products||root?.result?.product||[];
   return {connected:true,products:Array.isArray(raw)?raw.map(normalizeProduct):[],page:root?.result?.current_page_no||1,total:root?.result?.total_record_count||0,diagnostics:{rootKeys:Object.keys(root||{}),resultKeys:Object.keys(root?.result||{}),productContainer:root?.result?.products==null?'missing':Array.isArray(root.result.products)?'array':typeof root.result.products}};
 }
