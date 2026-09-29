@@ -13,7 +13,7 @@ export function signAliExpress(params, secret) {
   return crypto.createHmac('md5',secret).update(canonical).digest('hex').toUpperCase();
 }
 
-function normalizeProduct(product={}) {
+export function normalizeProduct(product={}) {
   return {
     id:String(product.product_id||''), name:product.product_title||'Untitled product',
     source:'AliExpress API', url:product.product_detail_url||'', image:product.product_main_image_url||'',
@@ -39,6 +39,6 @@ export async function searchAliExpress(options={}) {
   if(!response.ok) return {connected:false,error:`AliExpress API request failed (${response.status})`,products:[]};
   const root=body?.aliexpress_affiliate_product_query_response?.resp_result||body?.resp_result;
   if(root?.resp_code&&Number(root.resp_code)!==200) return {connected:false,error:root.resp_msg||`AliExpress API error ${root.resp_code}`,products:[]};
-  const raw=root?.result?.products||root?.result?.product||[];
+  const raw=root?.result?.products?.product||root?.result?.products||root?.result?.product||[];
   return {connected:true,products:Array.isArray(raw)?raw.map(normalizeProduct):[],page:root?.result?.current_page_no||1,total:root?.result?.total_record_count||0};
 }
