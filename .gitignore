@@ -1,0 +1,4 @@
+.env
+.ebay-token.enc
+.agent-state.json
+node_modules/
