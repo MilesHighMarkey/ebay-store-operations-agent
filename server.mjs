@@ -37,17 +37,18 @@ const auditEvent=(action,item,result,extra={})=>{state.audit=[...(state.audit||[
 
 async function runAutomaticDiscovery(){
   if(!process.env.ALIEXPRESS_APP_KEY||!process.env.ALIEXPRESS_APP_SECRET){state.discovery={lastRunAt:new Date().toISOString(),lastCreated:0,lastError:'AliExpress credentials are not configured'};persist();return {ran:false,reason:'AliExpress credentials are not configured',created:0};}
-  const categories=['gaming accessories','controller adapter','retro gaming cable']; let created=0;
+  const categories=['gaming accessories','controller adapter','retro gaming cable']; let created=0,evaluated=0,rejected=0; const errors=[];
   for(const keywords of categories){
-    const result=await searchAliExpress({keywords,deliveryDays:7,pageSize:20}); if(!result.connected)continue;
+    const result=await searchAliExpress({keywords,deliveryDays:7,pageSize:20}); if(!result.connected){errors.push(`${keywords}: ${result.error||'API unavailable'}`);continue;}
     const scored=scoreDiscoveredProducts((result.products||[]).map(p=>({...p,marketPrice:39.99,handlingDays:0,transitDays:p.transitDays||7})),{targetProfit:10});
+    evaluated+=scored.length; rejected+=scored.filter(x=>x.decision!=='review').length;
     for(const candidate of scored.filter(x=>x.decision==='review').slice(0,5)){
       const duplicate=(state.approvals||[]).some(x=>x.item?.sourceUrl&&x.item.sourceUrl===candidate.url&&x.status!=='rejected'); if(duplicate)continue;
       const draft={id:crypto.randomUUID(),...buildDraft({name:candidate.name,category:candidate.category||keywords,salePrice:candidate.marketPrice,supplierShipping:candidate.shipping||0,shipDays:candidate.transitDays||7,handlingDays:candidate.handlingDays||2,shipFrom:candidate.shipFrom,itemLocation:candidate.shipFrom,photos:candidate.image?[candidate.image]:[],sourceUrl:candidate.url,itemSpecifics:{sourceUrl:candidate.url,source:candidate.source,shipFrom:candidate.shipFrom,estimatedProfit:candidate.estimatedProfit,reviewCount:candidate.reviewCount}}),createdAt:new Date().toISOString()};
       const optimized=optimizeDraft(draft); state.listingDrafts=[...(state.listingDrafts||[]),optimized]; const approval={id:crypto.randomUUID(),action:'review_listing_draft',item:{draftId:optimized.id,title:optimized.title,profit:candidate.estimatedProfit,shippingDays:optimized.estimatedDelivery,origin:optimized.itemLocation,risks:optimized.riskFlags,sourceUrl:candidate.url},status:'pending',createdAt:new Date().toISOString()}; state.approvals.push(approval); auditEvent('Automatic product discovery',candidate.name,'Queued optimized draft for approval',{approvalId:approval.id}); await sendApprovalCard(approval); created++;
     }
   }
-  state.discovery={lastRunAt:new Date().toISOString(),lastCreated:created,lastError:null};persist(); return {ran:true,created};
+  state.discovery={lastRunAt:new Date().toISOString(),lastCreated:created,evaluated,rejected,lastError:errors.length?errors.join(' | '):null};persist(); return {ran:true,created,evaluated,rejected,errors};
 }
 
 try { if (await loadToken()) state.adapters.ebay='token stored; read-only mode'; } catch { /* setup status remains disconnected */ }
