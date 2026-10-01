@@ -28,9 +28,12 @@ export function normalizeProduct(product={}) {
 export async function searchAliExpress(options={}) {
   const appKey=process.env.ALIEXPRESS_APP_KEY, secret=process.env.ALIEXPRESS_APP_SECRET;
   if(!appKey||!secret) return {connected:false,error:'ALIEXPRESS_APP_KEY and ALIEXPRESS_APP_SECRET are required',products:[]};
+  const appSignature=process.env.ALIEXPRESS_APP_SIGNATURE;
+  if(!appSignature) return {connected:false,error:'ALIEXPRESS_APP_SIGNATURE is required for the Affiliate API app',products:[],diagnostics:{missing:'ALIEXPRESS_APP_SIGNATURE'}};
   const params={app_key:appKey,format:'json',method:'aliexpress.affiliate.product.query',partner_id:'store-agent',sign_method:'hmac',simplify:'true',timestamp:beijingTimestamp(),v:'2.0',
     fields:'app_sale_price,app_sale_price_currency,commission_rate,evaluate_rate,lastest_volume,product_detail_url,product_id,product_main_image_url,product_title,sale_price,sale_price_currency,ship_to_days,target_app_sale_price,target_sale_price',
     keywords:String(options.keywords||''),page_no:String(Math.max(1,Number(options.pageNo||1))),page_size:String(Math.min(50,Math.max(1,Number(options.pageSize||20)))),platform_product_type:'ALL',sort:'LAST_VOLUME_DESC',target_currency:'USD',target_language:'EN',tracking_id:process.env.ALIEXPRESS_TRACKING_ID||'powerplaygoods',ship_to_country:'US'};
+  params.app_signature=appSignature;
   if(options.deliveryDays) params.delivery_days=String(options.deliveryDays);
   if(options.categoryIds) params.category_ids=String(options.categoryIds);
   params.sign=signAliExpress(params,secret);
